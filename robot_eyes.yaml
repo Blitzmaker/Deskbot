@@ -1,0 +1,308 @@
+substitutions:
+  name: robot-eyes
+  friendly_name: Robot Eyes
+  # Bitte die Pins anhand des Waveshare-Wikis prüfen/anpassen
+  touch_sda_pin: GPIO8
+  touch_scl_pin: GPIO9
+  touch_int_pin: GPIO4
+  touch_rst_pin: GPIO5
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2024.6.0
+  includes: []
+  on_boot:
+    priority: -10
+    then:
+      - lambda: |-
+          id(emotion_mode) = 0;
+          id(emotion_hold_until) = 0;
+          id(blink_level) = 1.0f;
+          id(target_eye_dx) = 0.0f;
+          id(target_eye_dy) = 0.0f;
+          id(cur_eye_dx) = 0.0f;
+          id(cur_eye_dy) = 0.0f;
+          id(target_pupil_dx) = 0.0f;
+          id(target_pupil_dy) = 0.0f;
+          id(cur_pupil_dx) = 0.0f;
+          id(cur_pupil_dy) = 0.0f;
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+
+logger:
+api:
+ota:
+
+wifi:
+  ap:
+    ssid: "${friendly_name} Fallback"
+    password: "roboteyes"
+
+captive_portal:
+
+# Falls gewünscht später in Home Assistant steuerbar
+button:
+  - platform: template
+    name: "Emotion Freude"
+    on_press:
+      - script.execute: emotion_happy
+  - platform: template
+    name: "Emotion Aufregung"
+    on_press:
+      - script.execute: emotion_excited
+  - platform: template
+    name: "Zur Ruhe"
+    on_press:
+      - script.execute: emotion_calm
+
+select:
+  - platform: template
+    name: "Augenmodus"
+    optimistic: true
+    options:
+      - Ruhe
+      - Freude
+      - Aufregung
+    set_action:
+      - if:
+          condition:
+            lambda: 'return x == "Ruhe";'
+          then:
+            - script.execute: emotion_calm
+      - if:
+          condition:
+            lambda: 'return x == "Freude";'
+          then:
+            - script.execute: emotion_happy
+      - if:
+          condition:
+            lambda: 'return x == "Aufregung";'
+          then:
+            - script.execute: emotion_excited
+
+script:
+  - id: emotion_calm
+    then:
+      - lambda: |-
+          id(emotion_mode) = 0;
+          id(emotion_hold_until) = 0;
+
+  - id: emotion_happy
+    then:
+      - lambda: |-
+          id(emotion_mode) = 1;
+          id(emotion_hold_until) = millis() + 9000;
+
+  - id: emotion_excited
+    then:
+      - lambda: |-
+          id(emotion_mode) = 2;
+          id(emotion_hold_until) = millis() + 7000;
+
+  - id: blink_once
+    mode: restart
+    then:
+      - repeat:
+          count: 6
+          then:
+            - lambda: |-
+                id(blink_level) = std::max(0.0f, id(blink_level) - 0.2f);
+            - delay: 30ms
+      - delay: 40ms
+      - repeat:
+          count: 6
+          then:
+            - lambda: |-
+                id(blink_level) = std::min(1.0f, id(blink_level) + 0.2f);
+            - delay: 30ms
+
+globals:
+  - id: emotion_mode
+    type: int
+    restore_value: no
+    initial_value: "0" # 0=Ruhe, 1=Freude, 2=Aufregung
+  - id: emotion_hold_until
+    type: uint32_t
+    restore_value: no
+    initial_value: "0"
+
+  - id: blink_level
+    type: float
+    restore_value: no
+    initial_value: "1.0"
+
+  - id: cur_eye_dx
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: cur_eye_dy
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: target_eye_dx
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: target_eye_dy
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+
+  - id: cur_pupil_dx
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: cur_pupil_dy
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: target_pupil_dx
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+  - id: target_pupil_dy
+    type: float
+    restore_value: no
+    initial_value: "0.0"
+
+i2c:
+  sda: ${touch_sda_pin}
+  scl: ${touch_scl_pin}
+  scan: true
+
+touchscreen:
+  platform: cst816
+  id: my_touch
+  interrupt_pin: ${touch_int_pin}
+  reset_pin: ${touch_rst_pin}
+  on_touch:
+    - lambda: |-
+        // Links = Freude, rechts = Aufregung, Mitte = Blinzeln
+        if (touch.x < 150) {
+          id(emotion_happy).execute();
+        } else if (touch.x > 316) {
+          id(emotion_excited).execute();
+        } else {
+          id(blink_once).execute();
+        }
+
+display:
+  - platform: qspi_dbi
+    model: RM67162
+    data_rate: 40MHz
+    dimensions:
+      width: 466
+      height: 466
+    color_order: rgb
+    cs_pin: GPIO45
+    reset_pin: GPIO48
+    lambda: |-
+      const int cx = 233;
+      const int cy = 233;
+
+      int base_r = 72;
+      int pupil_r = 23;
+      int eye_distance = 92;
+
+      if (id(emotion_mode) == 1) {
+        base_r = 76;
+        pupil_r = 18;
+      } else if (id(emotion_mode) == 2) {
+        base_r = 82;
+        pupil_r = 16;
+      }
+
+      const int ex = (int) id(cur_eye_dx);
+      const int ey = (int) id(cur_eye_dy);
+      const int px = (int) id(cur_pupil_dx);
+      const int py = (int) id(cur_pupil_dy);
+
+      const int left_x = cx - eye_distance + ex;
+      const int right_x = cx + eye_distance + ex;
+      const int eye_y = cy + ey;
+
+      it.fill(Color::BLACK);
+
+      // Augen
+      it.filled_circle(left_x, eye_y, base_r, Color::WHITE);
+      it.filled_circle(right_x, eye_y, base_r, Color::WHITE);
+
+      // Pupillen
+      it.filled_circle(left_x + px, eye_y + py, pupil_r, Color::BLACK);
+      it.filled_circle(right_x + px, eye_y + py, pupil_r, Color::BLACK);
+
+      // Lid-Overlay für Blinzeln
+      int lid = (int) ((1.0f - id(blink_level)) * (float) base_r);
+      if (lid > 0) {
+        it.filled_rectangle(left_x - base_r - 2, eye_y - base_r - 2, (base_r * 2) + 4, lid + 2, Color::BLACK);
+        it.filled_rectangle(left_x - base_r - 2, eye_y + base_r - lid, (base_r * 2) + 4, lid + 2, Color::BLACK);
+
+        it.filled_rectangle(right_x - base_r - 2, eye_y - base_r - 2, (base_r * 2) + 4, lid + 2, Color::BLACK);
+        it.filled_rectangle(right_x - base_r - 2, eye_y + base_r - lid, (base_r * 2) + 4, lid + 2, Color::BLACK);
+      }
+
+      // Sanfter "Smile" bei Freude
+      if (id(emotion_mode) == 1) {
+        it.filled_rectangle(left_x - base_r, eye_y - base_r - 4, base_r * 2, 12, Color::BLACK);
+        it.filled_rectangle(right_x - base_r, eye_y - base_r - 4, base_r * 2, 12, Color::BLACK);
+      }
+
+interval:
+  # Interner Zustandsautomat für spontane Emotionen / Blinzeln
+  - interval: 500ms
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+
+          // Ende getriggerter Emotionsphase
+          if (id(emotion_mode) != 0 && id(emotion_hold_until) != 0 && now > id(emotion_hold_until)) {
+            id(emotion_mode) = 0;
+            id(emotion_hold_until) = 0;
+          }
+
+          // Zufällige spontane Emotionen in Ruhe
+          if (id(emotion_mode) == 0) {
+            int r = rand() % 1000;
+            if (r < 8) {
+              id(emotion_mode) = 1;
+              id(emotion_hold_until) = now + 4000;
+            } else if (r > 992) {
+              id(emotion_mode) = 2;
+              id(emotion_hold_until) = now + 2500;
+            }
+          }
+
+          // Zufalls-Blinzeln
+          if ((rand() % 100) < 10) {
+            id(blink_once).execute();
+          }
+
+          // Blickziele variieren
+          float max_eye = 8.0f;
+          float max_pupil = 18.0f;
+          if (id(emotion_mode) == 2) {
+            max_eye = 14.0f;
+            max_pupil = 24.0f;
+          }
+
+          id(target_eye_dx) = ((float) (rand() % 2001) / 1000.0f - 1.0f) * max_eye;
+          id(target_eye_dy) = ((float) (rand() % 2001) / 1000.0f - 1.0f) * max_eye;
+          id(target_pupil_dx) = ((float) (rand() % 2001) / 1000.0f - 1.0f) * max_pupil;
+          id(target_pupil_dy) = ((float) (rand() % 2001) / 1000.0f - 1.0f) * max_pupil;
+
+  # Weiche Bewegung
+  - interval: 40ms
+    then:
+      - lambda: |-
+          float speed = 0.10f;
+          if (id(emotion_mode) == 2) speed = 0.22f;
+          if (id(emotion_mode) == 1) speed = 0.14f;
+
+          id(cur_eye_dx) += (id(target_eye_dx) - id(cur_eye_dx)) * speed;
+          id(cur_eye_dy) += (id(target_eye_dy) - id(cur_eye_dy)) * speed;
+          id(cur_pupil_dx) += (id(target_pupil_dx) - id(cur_pupil_dx)) * speed;
+          id(cur_pupil_dy) += (id(target_pupil_dy) - id(cur_pupil_dy)) * speed;
