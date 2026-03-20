@@ -1,0 +1,479 @@
+substitutions:
+  name: deskbot
+  friendly_name: Deskbot
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  project:
+    name: local.deskbot
+    version: "0.1.0"
+  platformio_options:
+    board_build.flash_mode: dio
+    board_build.f_flash: 80000000L
+    board_build.f_cpu: 240000000L
+  on_boot:
+    priority: -10
+    then:
+      - lambda: |-
+          id(face_message).publish_state("Hallo vom Deskbot!");
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+api:
+  encryption:
+    key: !secret api_key
+ota:
+  - platform: esphome
+    password: !secret ota_password
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/shelson/esphome-cst9217
+
+spi:
+  - id: display_qspi
+    type: quad
+    clk_pin: GPIO38
+    data_pins: [GPIO4, GPIO5, GPIO6, GPIO7]
+
+i2c:
+  - id: bus_a
+    sda: GPIO15
+    scl: GPIO14
+    scan: true
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 20
+  - file: "gfonts://Roboto"
+    id: font_message
+    size: 28
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 44
+
+color:
+  - id: col_bg
+    hex: 050816
+  - id: col_eye
+    hex: EAF6FF
+  - id: col_pupil
+    hex: 111111
+  - id: col_happy
+    hex: FFDC6E
+  - id: col_fear
+    hex: 73B7FF
+  - id: col_text
+    hex: DDE7FF
+
+globals:
+  - id: eye_x
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: eye_y
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: target_eye_x
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: target_eye_y
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: blink_level
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: blink_dir
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: blink_hold
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: emotion_id
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: happiness
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: fear
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: page_id
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: swipe_start_x
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: swipe_start_y
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: touch_active
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: petting_score
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+  - id: stopwatch_running
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: stopwatch_seconds
+    type: int
+    restore_value: no
+    initial_value: '0'
+  - id: countdown_running
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+  - id: countdown_seconds
+    type: int
+    restore_value: no
+    initial_value: '300'
+  - id: countdown_default_minutes
+    type: int
+    restore_value: yes
+    initial_value: '5'
+
+text:
+  - platform: template
+    id: face_message
+    name: "Face Message"
+    mode: text
+    optimistic: true
+    restore_value: true
+    initial_value: "Hallo vom Deskbot!"
+    set_action:
+      - component.update: deskbot_display
+
+select:
+  - platform: template
+    id: emotion_select
+    name: "Emotion"
+    optimistic: true
+    restore_value: true
+    options:
+      - auto
+      - calm
+      - happy
+      - sleepy
+      - scared
+    initial_option: auto
+    set_action:
+      - lambda: |-
+          if (x == "auto") id(emotion_id) = 0;
+          else if (x == "calm") id(emotion_id) = 1;
+          else if (x == "happy") id(emotion_id) = 2;
+          else if (x == "sleepy") id(emotion_id) = 3;
+          else if (x == "scared") id(emotion_id) = 4;
+      - component.update: deskbot_display
+
+number:
+  - platform: template
+    id: countdown_minutes
+    name: "Countdown Minutes"
+    optimistic: true
+    restore_value: true
+    min_value: 1
+    max_value: 120
+    step: 1
+    initial_value: 5
+    set_action:
+      - lambda: |-
+          id(countdown_default_minutes) = (int) x;
+          if (!id(countdown_running)) {
+            id(countdown_seconds) = id(countdown_default_minutes) * 60;
+          }
+      - component.update: deskbot_display
+
+button:
+  - platform: template
+    name: "Startle"
+    on_press:
+      then:
+        - script.execute: trigger_startle
+  - platform: template
+    name: "Laugh"
+    on_press:
+      then:
+        - script.execute: trigger_laugh
+  - platform: template
+    name: "Stopwatch Toggle"
+    on_press:
+      then:
+        - lambda: |-
+            id(stopwatch_running) = !id(stopwatch_running);
+  - platform: template
+    name: "Stopwatch Reset"
+    on_press:
+      then:
+        - lambda: |-
+            id(stopwatch_running) = false;
+            id(stopwatch_seconds) = 0;
+  - platform: template
+    name: "Countdown Start"
+    on_press:
+      then:
+        - lambda: |-
+            id(countdown_seconds) = id(countdown_default_minutes) * 60;
+            id(countdown_running) = true;
+  - platform: template
+    name: "Countdown Stop"
+    on_press:
+      then:
+        - lambda: |-
+            id(countdown_running) = false;
+
+script:
+  - id: trigger_startle
+    then:
+      - lambda: |-
+          id(fear) = 1.0f;
+          id(happiness) *= 0.4f;
+          id(target_eye_x) = 0.0f;
+          id(target_eye_y) = -10.0f;
+          id(blink_level) = 0.0f;
+          id(blink_dir) = 0;
+      - component.update: deskbot_display
+  - id: trigger_laugh
+    then:
+      - lambda: |-
+          id(happiness) = 1.0f;
+          if (id(fear) > 0.2f) id(fear) = 0.2f;
+      - component.update: deskbot_display
+
+interval:
+  - interval: 120ms
+    then:
+      - lambda: |-
+          static int tick = 0;
+          tick++;
+
+          auto r = random_uint32();
+          if (id(page_id) == 0 && id(blink_dir) == 0 && (r % 45) == 0) {
+            id(blink_dir) = 1;
+          }
+
+          if (id(blink_dir) == 1) {
+            id(blink_level) += 0.28f;
+            if (id(blink_level) >= 1.0f) {
+              id(blink_level) = 1.0f;
+              id(blink_dir) = -1;
+              id(blink_hold) = 1;
+            }
+          } else if (id(blink_dir) == -1) {
+            if (id(blink_hold) > 0) {
+              id(blink_hold)--;
+            } else {
+              id(blink_level) -= 0.24f;
+              if (id(blink_level) <= 0.0f) {
+                id(blink_level) = 0.0f;
+                id(blink_dir) = 0;
+              }
+            }
+          }
+
+          int mood = id(emotion_id);
+          if (mood == 0) {
+            if (id(fear) > 0.35f) mood = 4;
+            else if (id(happiness) > 0.45f) mood = 2;
+            else mood = 1;
+          }
+
+          if (!id(touch_active)) {
+            if ((tick % 8) == 0) {
+              float dx = (int(random_uint32() % 25) - 12);
+              float dy = (int(random_uint32() % 19) - 9);
+              if (mood == 3) {
+                dx *= 0.25f;
+                dy *= 0.15f;
+              }
+              if (mood == 4) {
+                dx *= 0.6f;
+                dy = -8.0f;
+              }
+              if (mood == 2) {
+                dy -= 2.0f;
+              }
+              id(target_eye_x) = dx;
+              id(target_eye_y) = dy;
+            }
+          }
+
+          id(eye_x) += (id(target_eye_x) - id(eye_x)) * 0.18f;
+          id(eye_y) += (id(target_eye_y) - id(eye_y)) * 0.18f;
+          id(happiness) *= 0.97f;
+          id(fear) *= 0.95f;
+          id(petting_score) *= 0.90f;
+
+          if (id(stopwatch_running) && (tick % 8) == 0) {
+            id(stopwatch_seconds) += 1;
+          }
+          if (id(countdown_running) && (tick % 8) == 0) {
+            if (id(countdown_seconds) > 0) {
+              id(countdown_seconds) -= 1;
+            } else {
+              id(countdown_running) = false;
+              id(happiness) = 0.8f;
+            }
+          }
+      - component.update: deskbot_display
+
+display:
+  - platform: mipi_spi
+    id: deskbot_display
+    model: CO5300
+    bus_mode: quad
+    dimensions:
+      width: 466
+      height: 466
+    cs_pin: GPIO12
+    reset_pin: GPIO39
+    update_interval: never
+    lambda: |-
+      it.fill(id(col_bg));
+      const int cx = 233;
+      const int cy = 233;
+      const int eye_offset = 92;
+      const int eye_w = 74;
+      const int eye_h_base = 96;
+
+      int mood = id(emotion_id);
+      if (mood == 0) {
+        if (id(fear) > 0.35f) mood = 4;
+        else if (id(happiness) > 0.45f) mood = 2;
+        else mood = 1;
+      }
+
+      float blink_factor = 1.0f - id(blink_level);
+      int eye_h = std::max(8, int(eye_h_base * blink_factor));
+      if (mood == 3) eye_h = std::max(6, int(eye_h * 0.45f));
+      if (mood == 4) eye_h = std::min(eye_h_base + 14, eye_h + 14);
+
+      int left_x = cx - eye_offset + int(id(eye_x));
+      int right_x = cx + eye_offset + int(id(eye_x));
+      int eye_y = cy + int(id(eye_y));
+      int pupil_dx = int(id(eye_x) * 0.45f);
+      int pupil_dy = int(id(eye_y) * 0.35f);
+
+      auto accent = id(col_happy);
+      if (mood == 4) accent = id(col_fear);
+
+      it.filled_circle(left_x, eye_y, eye_w, id(col_eye));
+      it.filled_circle(right_x, eye_y, eye_w, id(col_eye));
+      it.filled_rectangle(left_x - eye_w, eye_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
+      it.filled_rectangle(left_x - eye_w, eye_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
+      it.filled_rectangle(right_x - eye_w, eye_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
+      it.filled_rectangle(right_x - eye_w, eye_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
+
+      int pupil_r = (mood == 4) ? 18 : 24;
+      it.filled_circle(left_x + pupil_dx, eye_y + pupil_dy, pupil_r, id(col_pupil));
+      it.filled_circle(right_x + pupil_dx, eye_y + pupil_dy, pupil_r, id(col_pupil));
+
+      if (mood == 2) {
+        it.line(left_x - 54, eye_y - 82, left_x + 54, eye_y - 54, accent);
+        it.line(right_x - 54, eye_y - 54, right_x + 54, eye_y - 82, accent);
+      } else if (mood == 4) {
+        it.line(left_x - 58, eye_y - 68, left_x + 58, eye_y - 90, accent);
+        it.line(right_x - 58, eye_y - 90, right_x + 58, eye_y - 68, accent);
+      } else if (mood == 3) {
+        it.line(left_x - 42, eye_y - 42, left_x + 42, eye_y - 40, id(col_text));
+        it.line(right_x - 42, eye_y - 40, right_x + 42, eye_y - 42, id(col_text));
+      }
+
+      if (id(page_id) == 0) {
+        std::string msg = id(face_message).state.c_str();
+        if (msg.size() > 28) msg = msg.substr(0, 28);
+        it.printf(cx, 370, id(font_message), id(col_text), TextAlign::CENTER, "%s", msg.c_str());
+      } else if (id(page_id) == 1) {
+        int mm = id(stopwatch_seconds) / 60;
+        int ss = id(stopwatch_seconds) % 60;
+        it.printf(cx, 110, id(font_small), id(col_text), TextAlign::CENTER, "Stoppuhr");
+        it.printf(cx, 215, id(font_big), id(col_text), TextAlign::CENTER, "%02d:%02d", mm, ss);
+        it.printf(cx, 315, id(font_small), accent, TextAlign::CENTER, id(stopwatch_running) ? "Laeuft" : "Pausiert");
+        it.printf(cx, 360, id(font_small), id(col_text), TextAlign::CENTER, "Wische links/rechts fuer Seiten");
+      } else {
+        int mm = id(countdown_seconds) / 60;
+        int ss = id(countdown_seconds) % 60;
+        it.printf(cx, 110, id(font_small), id(col_text), TextAlign::CENTER, "Countdown");
+        it.printf(cx, 215, id(font_big), id(col_text), TextAlign::CENTER, "%02d:%02d", mm, ss);
+        it.printf(cx, 315, id(font_small), accent, TextAlign::CENTER, id(countdown_running) ? "Aktiv" : "Bereit");
+        it.printf(cx, 360, id(font_small), id(col_text), TextAlign::CENTER, "%d Minuten Vorgabe", id(countdown_default_minutes));
+      }
+
+touchscreen:
+  - platform: cst9217
+    id: ts_face
+    display: deskbot_display
+    interrupt_pin: GPIO11
+    reset_pin: GPIO40
+    transform:
+      mirror_x: true
+      mirror_y: true
+    on_update:
+      - lambda: |-
+          for (auto touch : touches) {
+            if (touch.state <= 2) {
+              if (!id(touch_active)) {
+                id(touch_active) = true;
+                id(swipe_start_x) = touch.x;
+                id(swipe_start_y) = touch.y;
+              }
+
+              id(target_eye_x) = ((float) touch.x - 233.0f) / 12.0f;
+              id(target_eye_y) = ((float) touch.y - 233.0f) / 14.0f;
+
+              if (id(page_id) == 0) {
+                if (touch.y > 110 && touch.y < 340) {
+                  id(petting_score) += 0.12f;
+                  if (id(petting_score) > 0.35f) {
+                    id(happiness) = std::min(1.0f, id(happiness) + 0.18f);
+                  }
+                }
+              }
+            } else {
+              int dx = touch.x - id(swipe_start_x);
+              int dy = touch.y - id(swipe_start_y);
+              if (abs(dx) > 90 && abs(dx) > abs(dy)) {
+                if (dx < 0) id(page_id) = (id(page_id) + 1) % 3;
+                else id(page_id) = (id(page_id) + 2) % 3;
+              } else if (id(page_id) == 1) {
+                id(stopwatch_running) = !id(stopwatch_running);
+              } else if (id(page_id) == 2) {
+                id(countdown_running) = !id(countdown_running);
+              } else if (id(page_id) == 0 && id(petting_score) > 0.45f) {
+                id(happiness) = 1.0f;
+              }
+              id(touch_active) = false;
+            }
+          }
+      - component.update: deskbot_display
