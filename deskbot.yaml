@@ -381,33 +381,33 @@ display:
 
       int left_x = cx - eye_offset + int(id(eye_x));
       int right_x = cx + eye_offset + int(id(eye_x));
-      int eye_y = cy + int(id(eye_y));
+      int eye_center_y = cy + int(id(eye_y));
       int pupil_dx = int(id(eye_x) * 0.45f);
       int pupil_dy = int(id(eye_y) * 0.35f);
 
       auto accent = id(col_happy);
       if (mood == 4) accent = id(col_fear);
 
-      it.filled_circle(left_x, eye_y, eye_w, id(col_eye));
-      it.filled_circle(right_x, eye_y, eye_w, id(col_eye));
-      it.filled_rectangle(left_x - eye_w, eye_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
-      it.filled_rectangle(left_x - eye_w, eye_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
-      it.filled_rectangle(right_x - eye_w, eye_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
-      it.filled_rectangle(right_x - eye_w, eye_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
+      it.filled_circle(left_x, eye_center_y, eye_w, id(col_eye));
+      it.filled_circle(right_x, eye_center_y, eye_w, id(col_eye));
+      it.filled_rectangle(left_x - eye_w, eye_center_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
+      it.filled_rectangle(left_x - eye_w, eye_center_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
+      it.filled_rectangle(right_x - eye_w, eye_center_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
+      it.filled_rectangle(right_x - eye_w, eye_center_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
 
       int pupil_r = (mood == 4) ? 18 : 24;
-      it.filled_circle(left_x + pupil_dx, eye_y + pupil_dy, pupil_r, id(col_pupil));
-      it.filled_circle(right_x + pupil_dx, eye_y + pupil_dy, pupil_r, id(col_pupil));
+      it.filled_circle(left_x + pupil_dx, eye_center_y + pupil_dy, pupil_r, id(col_pupil));
+      it.filled_circle(right_x + pupil_dx, eye_center_y + pupil_dy, pupil_r, id(col_pupil));
 
       if (mood == 2) {
-        it.line(left_x - 54, eye_y - 82, left_x + 54, eye_y - 54, accent);
-        it.line(right_x - 54, eye_y - 54, right_x + 54, eye_y - 82, accent);
+        it.line(left_x - 54, eye_center_y - 82, left_x + 54, eye_center_y - 54, accent);
+        it.line(right_x - 54, eye_center_y - 54, right_x + 54, eye_center_y - 82, accent);
       } else if (mood == 4) {
-        it.line(left_x - 58, eye_y - 68, left_x + 58, eye_y - 90, accent);
-        it.line(right_x - 58, eye_y - 90, right_x + 58, eye_y - 68, accent);
+        it.line(left_x - 58, eye_center_y - 68, left_x + 58, eye_center_y - 90, accent);
+        it.line(right_x - 58, eye_center_y - 90, right_x + 58, eye_center_y - 68, accent);
       } else if (mood == 3) {
-        it.line(left_x - 42, eye_y - 42, left_x + 42, eye_y - 40, id(col_text));
-        it.line(right_x - 42, eye_y - 40, right_x + 42, eye_y - 42, id(col_text));
+        it.line(left_x - 42, eye_center_y - 42, left_x + 42, eye_center_y - 40, id(col_text));
+        it.line(right_x - 42, eye_center_y - 40, right_x + 42, eye_center_y - 42, id(col_text));
       }
 
       if (id(page_id) == 0) {
