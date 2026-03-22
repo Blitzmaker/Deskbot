@@ -1,10 +1,6 @@
-substitutions:
-  name: deskbot
-  friendly_name: Deskbot
-
 esphome:
-  name: ${name}
-  friendly_name: ${friendly_name}
+  name: esphome-web-7b5894
+  friendly_name: esphome-web-7b5894
   project:
     name: local.deskbot
     version: "0.1.0"
@@ -32,13 +28,19 @@ psram:
 logger:
 api:
   encryption:
-    key: !secret api_key
+    key: "MwPnR817J9VdCfjMXfdf41d0lopH0jzwY4C8qr1xEfA="
+
 ota:
   - platform: esphome
-    password: !secret ota_password
+    password: "bd8fed359ad92fc63c85993ecf617da4"
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Esphome-Web-7B5894"
+    password: "RZhBxgTMeiKf"
 
 external_components:
   - source:
