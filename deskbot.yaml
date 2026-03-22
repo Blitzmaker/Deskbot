@@ -75,10 +75,6 @@ color:
     hex: 050816
   - id: col_eye
     hex: F7FBFF
-  - id: col_eye_glow
-    hex: 34D9FF
-  - id: col_eye_glow_soft
-    hex: 0B5B90
   - id: col_happy
     hex: 1EDC7A
   - id: col_fear
@@ -276,19 +272,22 @@ script:
       - component.update: deskbot_display
 
 interval:
-  - interval: 120ms
+  - interval: 90ms
     then:
       - lambda: |-
-          static int tick = 0;
+          static uint32_t tick = 0;
           tick++;
+          bool needs_redraw = false;
 
           auto r = random_uint32();
-          if (id(page_id) == 0 && id(blink_dir) == 0 && (r % 45) == 0) {
+          if (id(page_id) == 0 && id(blink_dir) == 0 && (r % 54) == 0) {
             id(blink_dir) = 1;
+            needs_redraw = true;
           }
 
           if (id(blink_dir) == 1) {
-            id(blink_level) += 0.28f;
+            id(blink_level) += 0.34f;
+            needs_redraw = true;
             if (id(blink_level) >= 1.0f) {
               id(blink_level) = 1.0f;
               id(blink_dir) = -1;
@@ -298,7 +297,8 @@ interval:
             if (id(blink_hold) > 0) {
               id(blink_hold)--;
             } else {
-              id(blink_level) -= 0.24f;
+              id(blink_level) -= 0.30f;
+              needs_redraw = true;
               if (id(blink_level) <= 0.0f) {
                 id(blink_level) = 0.0f;
                 id(blink_dir) = 0;
@@ -313,8 +313,7 @@ interval:
             else mood = 1;
           }
 
-          if (!id(touch_active)) {
-            if ((tick % 8) == 0) {
+          if (!id(touch_active) && (tick % 10) == 0) {
               float dx = (int(random_uint32() % 25) - 12);
               float dy = (int(random_uint32() % 19) - 9);
               if (mood == 3) {
@@ -330,27 +329,36 @@ interval:
               }
               id(target_eye_x) = dx;
               id(target_eye_y) = dy;
-            }
           }
 
-          id(eye_x) += (id(target_eye_x) - id(eye_x)) * 0.18f;
-          id(eye_y) += (id(target_eye_y) - id(eye_y)) * 0.18f;
+          float prev_eye_x = id(eye_x);
+          float prev_eye_y = id(eye_y);
+          id(eye_x) += (id(target_eye_x) - id(eye_x)) * 0.26f;
+          id(eye_y) += (id(target_eye_y) - id(eye_y)) * 0.26f;
+          if (fabsf(id(eye_x) - prev_eye_x) > 0.4f || fabsf(id(eye_y) - prev_eye_y) > 0.4f) {
+            needs_redraw = true;
+          }
           id(happiness) *= 0.97f;
           id(fear) *= 0.95f;
           id(petting_score) *= 0.90f;
 
-          if (id(stopwatch_running) && (tick % 8) == 0) {
+          if (id(stopwatch_running) && (tick % 11) == 0) {
             id(stopwatch_seconds) += 1;
+            needs_redraw = true;
           }
-          if (id(countdown_running) && (tick % 8) == 0) {
+          if (id(countdown_running) && (tick % 11) == 0) {
             if (id(countdown_seconds) > 0) {
               id(countdown_seconds) -= 1;
             } else {
               id(countdown_running) = false;
               id(happiness) = 0.8f;
             }
+            needs_redraw = true;
           }
-      - component.update: deskbot_display
+
+          if ((id(page_id) == 0 && (id(happiness) > 0.01f || id(fear) > 0.01f)) || needs_redraw) {
+            id(deskbot_display).update();
+          }
 
 display:
   - platform: mipi_spi
@@ -360,6 +368,9 @@ display:
     dimensions:
       width: 466
       height: 466
+    transform:
+      swap_xy: true
+      mirror_x: true
     cs_pin: GPIO12
     reset_pin: GPIO39
     update_interval: never
@@ -368,10 +379,8 @@ display:
       const int cx = 233;
       const int cy = 233;
       const int eye_offset = 94;
-      const int eye_w = 54;
-      const int eye_h_base = 88;
-      const int glow_outer = 26;
-      const int glow_inner = 14;
+      const int eye_w = 78;
+      const int eye_h_base = 138;
 
       int mood = id(emotion_id);
       if (mood == 0) {
@@ -383,68 +392,42 @@ display:
       float blink_factor = 1.0f - id(blink_level);
       int eye_h = std::max(10, int(eye_h_base * blink_factor));
       if (mood == 3) eye_h = std::max(8, int(eye_h * 0.34f));
-      if (mood == 2) eye_h = std::max(16, int(eye_h * 0.62f));
+      if (mood == 2) eye_h = std::max(52, int(eye_h * 0.96f));
       if (mood == 4) eye_h = std::min(eye_h_base + 10, eye_h + 10);
 
       int left_x = cx - eye_offset + int(id(eye_x));
       int right_x = cx + eye_offset + int(id(eye_x));
       int eye_center_y = cy + int(id(eye_y));
 
-      auto accent = id(col_eye_glow);
+      auto accent = id(col_eye);
       if (mood == 2) accent = id(col_happy);
       else if (mood == 4) accent = id(col_fear);
 
-      auto draw_eye = [&](int ex, bool left_eye) {
-        for (int i = 0; i < glow_outer; i += 4) {
-          int w = eye_w + glow_outer - i;
-          int h = std::max(6, eye_h + glow_outer - i);
-          int r = h / 2;
-          it.filled_circle(ex - w / 2 + r, eye_center_y, r, id(col_eye_glow_soft));
-          it.filled_circle(ex + w / 2 - r, eye_center_y, r, id(col_eye_glow_soft));
-          it.filled_rectangle(ex - w / 2 + r, eye_center_y - r, w - (r * 2), r * 2, id(col_eye_glow_soft));
-        }
-        for (int i = 0; i < glow_inner; i += 3) {
-          int w = eye_w + glow_inner - i;
-          int h = std::max(6, eye_h + glow_inner - i);
-          int r = h / 2;
-          it.filled_circle(ex - w / 2 + r, eye_center_y, r, accent);
-          it.filled_circle(ex + w / 2 - r, eye_center_y, r, accent);
-          it.filled_rectangle(ex - w / 2 + r, eye_center_y - r, w - (r * 2), r * 2, accent);
-        }
-
-        int core_w = eye_w;
-        int core_h = eye_h;
-        int x0 = ex - core_w / 2;
-        int y0 = eye_center_y - core_h / 2;
-
-        if (mood == 2) {
-          int tilt = 18;
-          if (left_eye) {
-            for (int x = 0; x < core_w; x++) {
-              int cut = tilt * x / core_w;
-              it.vertical_line(x0 + x, y0 + cut, core_h - cut, id(col_eye));
-            }
-          } else {
-            for (int x = 0; x < core_w; x++) {
-              int cut = tilt * (core_w - x) / core_w;
-              it.vertical_line(x0 + x, y0 + cut, core_h - cut, id(col_eye));
-            }
-          }
-        } else if (mood == 3) {
-          int cap_r = core_h / 2;
-          it.filled_circle(ex, eye_center_y + 2, cap_r, id(col_eye));
-          it.filled_rectangle(ex - core_w / 2, eye_center_y + 2 - cap_r, core_w, cap_r, id(col_eye));
-          it.filled_rectangle(ex - core_w / 2 - 6, eye_center_y - cap_r - 6, core_w + 12, cap_r, id(col_bg));
-        } else {
-          int r = core_h / 2;
-          it.filled_circle(ex - core_w / 2 + r, eye_center_y, r, id(col_eye));
-          it.filled_circle(ex + core_w / 2 - r, eye_center_y, r, id(col_eye));
-          it.filled_rectangle(ex - core_w / 2 + r, eye_center_y - r, core_w - (r * 2), r * 2, id(col_eye));
+      auto draw_pill = [&](int ex, int ey, int h, esphome::display::Color color) {
+        int r = std::min(eye_w / 2, h / 2);
+        it.filled_circle(ex, ey - (h / 2) + r, r, color);
+        it.filled_circle(ex, ey + (h / 2) - r, r, color);
+        if (h > (r * 2)) {
+          it.filled_rectangle(ex - (eye_w / 2), ey - (h / 2) + r, eye_w, h - (r * 2), color);
         }
       };
 
-      draw_eye(left_x, true);
-      draw_eye(right_x, false);
+      auto draw_eye = [&](int ex) {
+        if (mood == 3) {
+          int sleepy_h = std::max(18, eye_h);
+          draw_pill(ex, eye_center_y + 10, sleepy_h, accent);
+          it.filled_rectangle(ex - (eye_w / 2) - 6, eye_center_y - sleepy_h, eye_w + 12, sleepy_h / 2, id(col_bg));
+        } else {
+          draw_pill(ex, eye_center_y, eye_h, accent);
+        }
+
+        if (mood == 2) {
+          it.filled_circle(ex, eye_center_y + (eye_h / 2), eye_w / 2, id(col_bg));
+        }
+      };
+
+      draw_eye(left_x);
+      draw_eye(right_x);
 
       if (id(page_id) == 0) {
         std::string msg = id(face_message).state.c_str();
@@ -474,7 +457,7 @@ touchscreen:
     reset_pin: GPIO40
     transform:
       mirror_x: true
-      mirror_y: true
+      swap_xy: true
     on_update:
       - lambda: |-
           for (auto touch : touches) {
