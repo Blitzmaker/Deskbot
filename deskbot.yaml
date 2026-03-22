@@ -72,11 +72,13 @@ color:
   - id: col_bg
     hex: 050816
   - id: col_eye
-    hex: EAF6FF
-  - id: col_pupil
-    hex: 111111
+    hex: F7FBFF
+  - id: col_eye_glow
+    hex: 34D9FF
+  - id: col_eye_glow_soft
+    hex: 0B5B90
   - id: col_happy
-    hex: FFDC6E
+    hex: 1EDC7A
   - id: col_fear
     hex: 73B7FF
   - id: col_text
@@ -363,9 +365,11 @@ display:
       it.fill(id(col_bg));
       const int cx = 233;
       const int cy = 233;
-      const int eye_offset = 92;
-      const int eye_w = 74;
-      const int eye_h_base = 96;
+      const int eye_offset = 94;
+      const int eye_w = 54;
+      const int eye_h_base = 88;
+      const int glow_outer = 26;
+      const int glow_inner = 14;
 
       int mood = id(emotion_id);
       if (mood == 0) {
@@ -375,40 +379,70 @@ display:
       }
 
       float blink_factor = 1.0f - id(blink_level);
-      int eye_h = std::max(8, int(eye_h_base * blink_factor));
-      if (mood == 3) eye_h = std::max(6, int(eye_h * 0.45f));
-      if (mood == 4) eye_h = std::min(eye_h_base + 14, eye_h + 14);
+      int eye_h = std::max(10, int(eye_h_base * blink_factor));
+      if (mood == 3) eye_h = std::max(8, int(eye_h * 0.34f));
+      if (mood == 2) eye_h = std::max(16, int(eye_h * 0.62f));
+      if (mood == 4) eye_h = std::min(eye_h_base + 10, eye_h + 10);
 
       int left_x = cx - eye_offset + int(id(eye_x));
       int right_x = cx + eye_offset + int(id(eye_x));
       int eye_center_y = cy + int(id(eye_y));
-      int pupil_dx = int(id(eye_x) * 0.45f);
-      int pupil_dy = int(id(eye_y) * 0.35f);
 
-      auto accent = id(col_happy);
-      if (mood == 4) accent = id(col_fear);
+      auto accent = id(col_eye_glow);
+      if (mood == 2) accent = id(col_happy);
+      else if (mood == 4) accent = id(col_fear);
 
-      it.filled_circle(left_x, eye_center_y, eye_w, id(col_eye));
-      it.filled_circle(right_x, eye_center_y, eye_w, id(col_eye));
-      it.filled_rectangle(left_x - eye_w, eye_center_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
-      it.filled_rectangle(left_x - eye_w, eye_center_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
-      it.filled_rectangle(right_x - eye_w, eye_center_y - eye_h_base, eye_w * 2, eye_h_base - eye_h / 2, id(col_bg));
-      it.filled_rectangle(right_x - eye_w, eye_center_y + eye_h / 2, eye_w * 2, eye_h_base, id(col_bg));
+      auto draw_eye = [&](int ex, bool left_eye) {
+        for (int i = 0; i < glow_outer; i += 4) {
+          int w = eye_w + glow_outer - i;
+          int h = std::max(6, eye_h + glow_outer - i);
+          int r = h / 2;
+          it.filled_circle(ex - w / 2 + r, eye_center_y, r, id(col_eye_glow_soft));
+          it.filled_circle(ex + w / 2 - r, eye_center_y, r, id(col_eye_glow_soft));
+          it.filled_rectangle(ex - w / 2 + r, eye_center_y - r, w - (r * 2), r * 2, id(col_eye_glow_soft));
+        }
+        for (int i = 0; i < glow_inner; i += 3) {
+          int w = eye_w + glow_inner - i;
+          int h = std::max(6, eye_h + glow_inner - i);
+          int r = h / 2;
+          it.filled_circle(ex - w / 2 + r, eye_center_y, r, accent);
+          it.filled_circle(ex + w / 2 - r, eye_center_y, r, accent);
+          it.filled_rectangle(ex - w / 2 + r, eye_center_y - r, w - (r * 2), r * 2, accent);
+        }
 
-      int pupil_r = (mood == 4) ? 18 : 24;
-      it.filled_circle(left_x + pupil_dx, eye_center_y + pupil_dy, pupil_r, id(col_pupil));
-      it.filled_circle(right_x + pupil_dx, eye_center_y + pupil_dy, pupil_r, id(col_pupil));
+        int core_w = eye_w;
+        int core_h = eye_h;
+        int x0 = ex - core_w / 2;
+        int y0 = eye_center_y - core_h / 2;
 
-      if (mood == 2) {
-        it.line(left_x - 54, eye_center_y - 82, left_x + 54, eye_center_y - 54, accent);
-        it.line(right_x - 54, eye_center_y - 54, right_x + 54, eye_center_y - 82, accent);
-      } else if (mood == 4) {
-        it.line(left_x - 58, eye_center_y - 68, left_x + 58, eye_center_y - 90, accent);
-        it.line(right_x - 58, eye_center_y - 90, right_x + 58, eye_center_y - 68, accent);
-      } else if (mood == 3) {
-        it.line(left_x - 42, eye_center_y - 42, left_x + 42, eye_center_y - 40, id(col_text));
-        it.line(right_x - 42, eye_center_y - 40, right_x + 42, eye_center_y - 42, id(col_text));
-      }
+        if (mood == 2) {
+          int tilt = 18;
+          if (left_eye) {
+            for (int x = 0; x < core_w; x++) {
+              int cut = tilt * x / core_w;
+              it.vertical_line(x0 + x, y0 + cut, core_h - cut, id(col_eye));
+            }
+          } else {
+            for (int x = 0; x < core_w; x++) {
+              int cut = tilt * (core_w - x) / core_w;
+              it.vertical_line(x0 + x, y0 + cut, core_h - cut, id(col_eye));
+            }
+          }
+        } else if (mood == 3) {
+          int cap_r = core_h / 2;
+          it.filled_circle(ex, eye_center_y + 2, cap_r, id(col_eye));
+          it.filled_rectangle(ex - core_w / 2, eye_center_y + 2 - cap_r, core_w, cap_r, id(col_eye));
+          it.filled_rectangle(ex - core_w / 2 - 6, eye_center_y - cap_r - 6, core_w + 12, cap_r, id(col_bg));
+        } else {
+          int r = core_h / 2;
+          it.filled_circle(ex - core_w / 2 + r, eye_center_y, r, id(col_eye));
+          it.filled_circle(ex + core_w / 2 - r, eye_center_y, r, id(col_eye));
+          it.filled_rectangle(ex - core_w / 2 + r, eye_center_y - r, core_w - (r * 2), r * 2, id(col_eye));
+        }
+      };
+
+      draw_eye(left_x, true);
+      draw_eye(right_x, false);
 
       if (id(page_id) == 0) {
         std::string msg = id(face_message).state.c_str();
